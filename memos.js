@@ -742,6 +742,7 @@ async function getMemos(search) {
   memoDom.innerHTML = skeleton;
   loadBtn.classList.add("d-none");
   let results;
+  
   if(search && search != "" && search != null ){
     results = await Promise.allSettled(memoList.map(u => {
       let uLink = u.link
@@ -785,9 +786,10 @@ async function getMemos(search) {
         if (matchedV1 && item.createTime) {
           item.createdTs = Math.floor(new Date(item.createTime).getTime() / 1000);
         }
-        for (let key in matchedMemo) {
-          if (matchedMemo.hasOwnProperty(key)) {
-            item[key] = matchedMemo[key];
+        // 关键修复：使用当前用户 u 的信息，避免覆盖核心属性
+        for (let key in u) {
+          if (u.hasOwnProperty(key) && key !== 'createdTs' && key !== 'id' && key !== 'content') {
+            item[key] = u[key];
           }
         }
       });
@@ -797,18 +799,51 @@ async function getMemos(search) {
   results = results.filter(i => i.status === 'fulfilled');
   memoData = results.flatMap(result => result.value);
 
+  // 创建用户信息映射表 - 使用 link + creatorId 作为唯一键
+  const userMap = {};
+  memoList.forEach(user => {
+    const key = `${user.link}-${user.creatorId}`;
+    userMap[key] = user;
+  });
+
+  // 确保每个 memo 都有正确的用户信息
+  memoData = memoData.map(memo => {
+    if (!memo || !memo.creatorId || !memo.link) {
+      return memo;
+    }
+    
+    // 尝试找到正确的用户信息
+    const memoKey = `${memo.link}-${memo.creatorId}`;
+    const correctUser = userMap[memoKey];
+    
+    if (correctUser) {
+      // 合并用户信息，但保留 memo 的原始内容
+      return {
+        ...correctUser,
+        id: memo.id,
+        content: memo.content,
+        createdTs: memo.createdTs,
+        creatorId: memo.creatorId,
+        creatorName: memo.creatorName,
+        link: memo.link,
+        resourceList: memo.resourceList,
+        visibility: memo.visibility
+      };
+    }
+    
+    return memo;
+  });
+
   //memoData = await getMemoCount(memoData);
   memoDom.innerHTML = "";
   this.updateData(memoData);
   setTimeout(function() {
     loadBtn.classList.remove('d-none');
   }, 1000);
-  //setTimeout(function() {
-    window.scrollTo({
-      top: usernowDom.offsetTop - 30,
-      behavior: "smooth"
-    });
-  //}, 800);
+  window.scrollTo({
+    top: usernowDom.offsetTop - 30,
+    behavior: "smooth"
+  });
   goBbsBtn.classList.remove("noclick")
 }
 
